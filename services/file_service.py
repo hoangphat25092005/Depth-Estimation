@@ -44,10 +44,19 @@ async def get_image_bytes(file: UploadFile = None, url: str = None) -> tuple[byt
         if not url.startswith(("http://", "https://")):
             url = f"https://{url}"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
+        # THÊM MỚI: Giả lập trình duyệt để không bị web chặn (403)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", 
+            "Referer": url,  # Đóng giả yêu cầu xuất phát từ chính trang web của họ
+            "Accept": "video/webm,video/mp4,video/*;q=0.9,application/json,*/*;q=0.8"
+        }
+        
+        # THÊM MỚI: follow_redirects=True để tránh lỗi link rút gọn (301/302)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(url, headers=headers)
             if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Không thể tải ảnh từ url")
+                raise HTTPException(status_code=400, detail=f"Không thể tải ảnh. Server trả về mã: {response.status_code}")
+            
             filename =  url.split("/")[-1].split("?")[0] or "downloaded_image.jpg"
             content_type = response.headers.get("content-type", "image/jpeg")
             return response.content, filename, content_type
@@ -87,24 +96,40 @@ async def get_video_bytes(file: UploadFile = None, url: str = None) -> tuple[str
                 raise HTTPException(status_code=400, detail=f"Lỗi khi tải từ YouTube: {str(e)}")
         else:
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    async with client.stream("GET", url) as response:
+                # Giả lập trình duyệt và bật follow_redirects
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", 
+                    "Referer": url,  # Đóng giả yêu cầu xuất phát từ chính trang web của họ
+                    "Accept": "video/webm,video/mp4,video/*;q=0.9,application/json,*/*;q=0.8"
+                }
+                
+                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                    async with client.stream("GET", url, headers=headers) as response:
                         if response.status_code != 200:
-                            raise HTTPException(status_code=400, detail="Không thể tải video từ url")
+                            raise HTTPException(status_code=400, detail=f"Không thể tải video. Server trả về mã: {response.status_code}")
+                        
                         with open(temp_input_path, "wb") as f:
                             async for chunk in response.aiter_bytes():
                                 f.write(chunk)
+                                
                 filename = url.split("/")[-1].split("?")[0] or "downloaded_video.mp4"
                 return temp_input_path, filename, "video/mp4"
+            
+            # THÊM MỚI: Tách HTTPException ra để không bị đè lỗi "400: Không thể tải video từ url"
+            except HTTPException as he:
+                if os.path.exists(temp_input_path): os.remove(temp_input_path)
+                raise he
+            
             except Exception as e:
                 if os.path.exists(temp_input_path): os.remove(temp_input_path)
-                raise HTTPException(status_code=400, detail=f"Lỗi tải video từ URL: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Lỗi mạng khi tải video từ URL: {str(e)}")
     else:
         # Nếu cả 2 đều trống
         os.close(fd)
         if os.path.exists(temp_input_path): os.remove(temp_input_path)
         raise HTTPException(status_code=400, detail="Vui lòng cung cấp file hoặc URL.")
     
+
 # MinIO 
 # Upload single file
 async def upload_single_file(file: UploadFile, db: Session, auto_commit: bool = True) -> FileModel:
