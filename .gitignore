@@ -1,0 +1,14 @@
+# Môi trường ảo
+.venv/
+venv/
+__pycache__/
+
+# Mật khẩu / Cấu hình
+.env
+
+# Các file ảnh / video test lặt vặt (tuỳ chọn)
+*.mp4
+*.jpg
+*.jpeg
+*.png
+*.avi

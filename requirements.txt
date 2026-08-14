@@ -1,0 +1,25 @@
+# --- Core API & Web Server ---
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6  # BẮT BUỘC ĐỂ FASTAPI NHẬN FILE (UploadFile, Form)
+
+# --- Database & Storage ---
+SQLAlchemy>=2.0.0
+boto3>=1.28.0            # Giao tiếp với MinIO / S3
+
+# --- Download & Media Tools ---
+httpx>=0.24.0            # Tải file bất đồng bộ từ URL
+yt-dlp>=2023.7.6         # Tải video từ YouTube
+
+# --- Database Driver ---
+psycopg2-binary          # Dùng cho PostgreSQL
+pymysql                  # Dùng cho MySQL
+
+# --- AI & Image/Video Processing ---
+opencv-python            # Xử lý video/ảnh (cv2)
+numpy                    # Xử lý ma trận
+torch                    # Pytorch
+torchvision            
+transformers             # Thư viện HuggingFace
+onnx                     # Thư viện làm việc với cấu trúc model ONNX
+onnxruntime              # Môi trường chạy model ONNX (Inference)
