@@ -1,7 +1,7 @@
 import os
 import shutil
 import tempfile
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, BackgroundTasks, Form, File
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, BackgroundTasks, Form, File, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -12,6 +12,8 @@ from models.file import FileModel # Import FileModel để truy vấn DB
 # Import toàn bộ logic từ Service mới tạo
 from services.tasks_service import upload_to_minio_and_db, background_process_image, background_process_video
 from services.file_service import get_image_bytes, get_video_bytes
+from services.websocket_service import manager
+
 
 router = APIRouter(prefix="/depth", tags=["Depth Estimation"])
 
@@ -155,3 +157,38 @@ async def check_task_status(file_id: int, db: Session = Depends(get_db)):
         "original_file": db_original,
         "depth_file": db_depth
     }
+
+@router.websocket("/ws/status/{file_id}")
+async def websocket_status_endpoint(websocket: WebSocket, file_id: str, db: Session = Depends(get_db)):
+    await manager.connect(websocket, file_id)
+
+    try:
+        db_original = db.query(FileModel).filter(FileModel.id == file_id).first()
+        if not db_original:
+            await websocket.send_json({"status": "error", "message": "File ID không tồn tại"})
+            await websocket.close()
+
+            return
+        
+        current_status = db_original.status.lower()
+        if current_status == "completed":
+            await websocket.send_json({"status": "completed", "message": "File đã hoàn thành từ trước"})
+            await websocket.close()
+            return
+        elif current_status == "failed":
+            await websocket.send_json({"status": "failed", "message": "File đã bị lỗi từ trước"})
+            await websocket.close()
+            return
+        else:
+            await websocket.send_json({"status": "processing", "message": "Đã kết nối thành công, đang chờ AI..."})
+
+        # 2. Giữ đường dây điện thoại mở liên tục
+        while True:
+            # Lệnh này dùng để giữ connection không bị ngắt. 
+            # Dù Frontend không gửi gì, loop vẫn phải đứng ở đây để chờ
+            data = await websocket.receive_text()
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, file_id)
+    except Exception:
+        manager.disconnect(websocket, file_id)

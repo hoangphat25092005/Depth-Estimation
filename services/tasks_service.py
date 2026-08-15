@@ -8,6 +8,7 @@ from configs.database import SessionLocal
 from configs.minio_store import S3_bucket_name_depth, s3_client
 from models.file import FileModel
 from services.depth_service import depth_service
+from services.websocket_service import notify_ws_sync
 
 
 def upload_to_minio_and_db(
@@ -50,10 +51,17 @@ def background_process_image(original_bytes: bytes, original_filename: str, orig
     """Task ngầm xử lý Ảnh"""
     db = SessionLocal()
     uploaded_files: list[tuple[str, str]] = []
+
+    # Thong bao tiep nhan anh de xu ly depth 
+    notify_ws_sync(original_file_id, "processing", "Đã nhận ảnh, qua trình Depth Estimation bắt đầu...")
     
     try:
         depth_bytes = depth_service.process_image_bytes(original_bytes)
         depth_filename = f"depth_{original_filename}"
+
+        # Model dang xu ly
+        notify_ws_sync(original_file_id, "processing", "Depth model xử lý xong. Đang lưu ảnh lên hệ thống...")
+
         db_depth = upload_to_minio_and_db(
             file_bytes=depth_bytes,
             original_name=depth_filename,
@@ -71,9 +79,18 @@ def background_process_image(original_bytes: bytes, original_filename: str, orig
 
         db.commit()
 
+        # Hoàn thành qua trinh xu ly depth
+        notify_ws_sync(original_file_id, "completed", "Xử lý ảnh thành công!", extra_data={
+            "depth_file_id": db_depth.id
+        })
+
+
     except Exception as e:
         db.rollback()
         print(f"Lỗi xử lý ảnh ngầm: {str(e)}")
+
+        notify_ws_sync(original_file_id, "failed", f"Xử lý ảnh thất bại: {str(e)}")
+
         try:
             db_original = db.query(FileModel).filter(FileModel.id == original_file_id).first()
             if db_original:
@@ -107,9 +124,14 @@ def background_process_video(input_file_path: str, original_filename: str, origi
         db_original.status = "processing"
         db.commit()
 
+    notify_ws_sync(original_file_id, "processing", "Đã nhận video, mô hình Depth Estimation đang chạy...")
+
+
     try:
         # 1. AI xử lý video (lưu ra file raw)
         depth_service.process_video_file(input_file_path, raw_output_path)
+
+        notify_ws_sync(original_file_id, "processing", "AI chạy xong. Đang tối ưu hóa video cho Web (H.264)...")
         
         # 2. Convert sang H.264 bằng FFmpeg
         # Lệnh này tương đương: ffmpeg -i raw_output.mp4 -vcodec libx264 -acodec aac web_output.mp4
@@ -124,6 +146,8 @@ def background_process_video(input_file_path: str, original_filename: str, origi
         
         # Chạy lệnh FFmpeg (chặn cho đến khi convert xong)
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+        notify_ws_sync(original_file_id, "processing", "Đang lưu video lên server...")
 
         # 3. Đọc byte từ file H.264 chuẩn web để upload lên MinIO
         with open(web_output_path, "rb") as f:
@@ -147,9 +171,15 @@ def background_process_video(input_file_path: str, original_filename: str, origi
             db_original.depth_file_id = db_depth.id
         db.commit()
 
+        notify_ws_sync(original_file_id, "completed", "Xử lý video thành công toàn bộ!", extra_data={
+            "depth_file_id": db_depth.id
+        })
+
     except Exception as e:
         db.rollback()
         print(f"Lỗi xử lý video ở background: {str(e)}")
+
+        notify_ws_sync(original_file_id, "failed", f"Xử lý video thất bại: {str(e)}")
 
         try:
             db_original = db.query(FileModel).filter(FileModel.id == original_file_id).first()
