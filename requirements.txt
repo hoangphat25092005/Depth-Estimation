@@ -1,25 +1,67 @@
-# --- Core API & Web Server ---
+# ============================================
+# Core API & Web Server
+# ============================================
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
-python-multipart>=0.0.6  # BẮT BUỘC ĐỂ FASTAPI NHẬN FILE (UploadFile, Form)
+python-multipart>=0.0.6
 
-# --- Database & Storage ---
+# ============================================
+# Database & ORM
+# ============================================
 SQLAlchemy>=2.0.0
-boto3>=1.28.0            # Giao tiếp với MinIO / S3
+pymysql>=1.1.0
+cryptography>=41.0.0
 
-# --- Download & Media Tools ---
-httpx>=0.24.0            # Tải file bất đồng bộ từ URL
-yt-dlp>=2023.7.6         # Tải video từ YouTube
+# ============================================
+# Object Storage (MinIO / AWS S3)
+# ============================================
+boto3>=1.28.0
 
-# --- Database Driver ---
-psycopg2-binary          # Dùng cho PostgreSQL
-pymysql                  # Dùng cho MySQL
+# ============================================
+# Asynchronous HTTP Client
+# ============================================
+httpx>=0.24.0
 
-# --- AI & Image/Video Processing ---
-opencv-python            # Xử lý video/ảnh (cv2)
-numpy                    # Xử lý ma trận
-torch                    # Pytorch
-torchvision            
-transformers             # Thư viện HuggingFace
-onnx                     # Thư viện làm việc với cấu trúc model ONNX
-onnxruntime              # Môi trường chạy model ONNX (Inference)
+# ============================================
+# Task Queue & Background Processing
+# ============================================
+celery>=5.3.0
+redis>=5.0.0
+
+# ============================================
+# Data Validation
+# ============================================
+pydantic>=2.0.0
+
+# ============================================
+# Environment Variables
+# ============================================
+python-dotenv>=1.0.0
+
+# ============================================
+# Video Download
+# ============================================
+yt-dlp>=2023.7.6
+
+# ============================================
+# AI / Deep Learning
+# ============================================
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+onnx>=1.14.0
+onnxruntime>=1.16.0
+
+# ============================================
+# Image / Video Processing
+# ============================================
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# ============================================
+# Media Conversion (System Dependency)
+# ============================================
+# FFmpeg phải được cài đặt riêng trên hệ thống
+# Ubuntu/Debian: sudo apt install ffmpeg
+# Windows: Tải từ https://ffmpeg.org/download.html và thêm vào PATH
+# macOS: brew install ffmpeg
