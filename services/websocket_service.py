@@ -1,6 +1,5 @@
 import asyncio 
 from fastapi import WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
 
 class ConnectionManager:
     def __init__(self):
@@ -44,7 +43,7 @@ class ConnectionManager:
 # Called an instance of the websocket connection
 manager = ConnectionManager()
 
-# 2. HÀM PHỤ TRỢ (DÙNG BÊN TRONG BACKGROUND TASK)
+# 2. Hàm phụ trợ để truyền thông báo từ background tasks sang luồn websocket chính
 def notify_ws_sync(file_id: str, status: str, message: str, extra_data: dict = None):
     """Bắn tin nhắn từ Background Task (luồng phụ) về WebSocket (luồng chính)"""
     data = {"status": status, "message": message}

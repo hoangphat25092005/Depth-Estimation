@@ -44,7 +44,7 @@ class DepthONNXService:
         nparr = np.frombuffer(image_bytes, np.uint8)
         original_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if original_img is None:
-            raise ValueError("Không thể đọc ảnh")
+            raise ValueError("Không thể đọc image input")
         depth_color = self.process_single_frame(original_img)
         success, encoded_image = cv2.imencode('.jpg', depth_color)
         return encoded_image.tobytes()
