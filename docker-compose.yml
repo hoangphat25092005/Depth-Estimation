@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  # ==========================================
+  # MySQL Database
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: fus_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fus_net
+
+  # ==========================================
+  # MinIO Object Storage
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: fus_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fus_net
+
+  # ==========================================
+  # MinIO Init - Create buckets
+  # ==========================================
+  minio-init:
+    image: minio/mc:latest
+    container_name: fus_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >-
+      /bin/sh -c "
+      sleep 5 &&
+      mc alias set local http://minio:9000 ${STORAGE_ACCESS_KEY} ${STORAGE_SECRET_KEY} &&
+      mc mb local/011 --ignore-existing &&
+      mc mb local/012 --ignore-existing &&
+      mc anonymous set download local/011 &&
+      mc anonymous set download local/012 &&
+      echo 'MinIO buckets ready!'
+      "
+    networks:
+      - fus_net
+
+  # ==========================================
+  # FastAPI Application
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fus_app
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      STORAGE_DOMAIN: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      DEPTH_MODEL_PATH: /app/checkpoints/depth_anything_v2_vits.onnx
+    volumes:
+      - ./checkpoints:/app/checkpoints:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - fus_net
+
+# ==========================================
+# Volumes
+# ==========================================
+volumes:
+  mysql_data:
+  minio_data:
+
+# ==========================================
+# Network
+# ==========================================
+networks:
+  fus_net:
+    driver: bridge
