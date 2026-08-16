@@ -34,16 +34,13 @@ def _save_upload_to_temp_file(file: UploadFile, suffix: str) -> str:
 def download_youtube_sync(url: str, output_path: str):
     """Sử dụng yt-dlp để tải video YouTube và lưu vào output_path"""
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
         'outtmpl': output_path,
         'quiet': True,
         'no_warnings': True,
-        'merge_output_format': 'mp4',
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
-    # Đảm bảo file được ghi hoàn toàn xuống disk
-    os.sync()
 
 
 # File Downloading (images/videos from Internet)
@@ -54,11 +51,11 @@ async def get_image_bytes(file: UploadFile = None, url: str = None) -> tuple[byt
         if url.lower() in ["string", "null", ""]:
             url = None
 
-    # ƯU TIÊN FILE TỪ MÁY TÍNH
+    # ưu tiên file local trên máy
     if file and file.filename:
         return await file.read(), file.filename, file.content_type
 
-    # NẾU KHÔNG CÓ FILE, MỚI DÙNG URL
+    # Không có file thì mới dùng url
     elif url:
         if not url.startswith(("http://", "https://")):
             url = f"https://{url}"
