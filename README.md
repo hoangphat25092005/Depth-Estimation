@@ -245,7 +245,7 @@ curl "http://localhost:8001/depth/status/1"
 
 | Original Input | Depth Map Output |
 |:---:|:---:|
-| ![Forest road](docs/images/input-forest.jpg) | ![Forest depth](docs/images/depth-forest.jpg) |
+| ![Forest road](docs/images/depth-forest.jpg) | ![Forest depth](docs/images/input-forest.jpg) |
 
 The model correctly identifies the foreground grass and road, while preserving depth gradients into the forest. Closer surfaces (warm tones: yellow/orange) versus distant trees (cool tones: purple/black).
 
