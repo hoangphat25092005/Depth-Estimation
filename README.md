@@ -60,7 +60,7 @@ flowchart TB
     G --> I
     C -->|"Update status| J
     C -->|"Notify| D
-    A -->|"WS /depth/ws/status/{id}| D
+    A -->|"WebSocket /depth/ws/status/{id}"| D
     A -->|"GET /depth/status/{id}| B
 ```
 
