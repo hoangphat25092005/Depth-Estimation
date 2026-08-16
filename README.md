@@ -50,18 +50,18 @@ flowchart TB
         J["🗄️ MySQL\nFile Metadata & Status"]
     end
 
-    A -->|"POST /depth/image\nor /depth/video"| B
-    B -->|"Stream to| H
-    B -->|"Save metadata| J
-    B -->|"Enqueue| C
+    A -->|"POST /depth/image or /depth/video"| B
+    B -->|"Stream to"| H
+    B -->|"Save metadata"| J
+    B -->|"Enqueue"| C
     C --> E
     E --> F
     F --> G
     G --> I
-    C -->|"Update status| J
-    C -->|"Notify| D
+    C -->|"Update status"| J
+    C -->|"Notify"| D
     A -->|"WebSocket /depth/ws/status/{id}"| D
-    A -->|"GET /depth/status/{id}| B
+    A -->|"GET /depth/status/{id}"| B
 ```
 
 ### Data Flow

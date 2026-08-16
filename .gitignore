@@ -8,7 +8,6 @@ __pycache__/
 
 # Các file ảnh / video test lặt vặt (tuỳ chọn)
 *.mp4
-*.jpg
 *.jpeg
 *.png
 *.avi
