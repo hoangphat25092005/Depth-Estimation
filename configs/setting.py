@@ -1,7 +1,9 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from the project root (configs/ is one level below project root)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 STORAGE_DOMAIN = os.getenv("STORAGE_DOMAIN", "http://localhost:9000")

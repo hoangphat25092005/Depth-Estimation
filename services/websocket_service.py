@@ -1,5 +1,5 @@
 import asyncio 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 class ConnectionManager:
     def __init__(self):
@@ -39,9 +39,23 @@ class ConnectionManager:
                 except Exception:
                     pass
 
+    async def auto_disconnect(self, message: dict, file_id: str):
+        """Gửi message cuối cùng rồi tự động đóng kết nối."""
+        file_id_str = str(file_id)
+        if file_id_str in self.active_connections:
+            for connection in list(self.active_connections[file_id_str]):
+                try:
+                    await connection.send_json(message)
+                    await connection.close(code=1000)
+                except Exception:
+                    pass
+            self.disconnect(connection, file_id_str)
+
+
 
 # Called an instance of the websocket connection
 manager = ConnectionManager()
+
 
 # 2. Hàm phụ trợ để truyền thông báo từ background tasks sang luồn websocket chính
 def notify_ws_sync(file_id: str, status: str, message: str, extra_data: dict = None):

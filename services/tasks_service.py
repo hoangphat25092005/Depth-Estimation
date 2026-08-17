@@ -131,7 +131,7 @@ def background_process_video(input_file_path: str, original_filename: str, origi
         # 1. AI xử lý video (lưu ra file raw)
         depth_service.process_video_file(input_file_path, raw_output_path)
 
-        notify_ws_sync(original_file_id, "processing", "AI chạy xong. Đang tối ưu hóa video cho Web (H.264)...")
+        notify_ws_sync(original_file_id, "processing", "Model Depth chạy xong. Đang tối ưu hóa video cho Web (H.264)...")
         
         # 2. Convert sang H.264 bằng FFmpeg
         # Lệnh này tương đương: ffmpeg -i raw_output.mp4 -vcodec libx264 -acodec aac web_output.mp4

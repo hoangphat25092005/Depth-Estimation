@@ -1,23 +1,22 @@
 import os
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, BackgroundTasks, Form, File, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, Form, File, WebSocket
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from configs.database import get_db
 from configs.minio_store import S3_bucket_name_original, s3_client
 from models.file import FileModel
+from tasks.celery_tasks import celery_app
 
-from services.tasks_service import upload_to_minio_and_db, background_process_image, background_process_video
+from services.tasks_service import upload_to_minio_and_db
 from services.file_service import get_image_bytes, get_video_bytes
 from services.websocket_service import manager
-
 
 router = APIRouter(prefix="/depth", tags=["Depth Estimation"])
 
 
 @router.post("/image")
 async def estimate_depth_image(
-    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(None),
     url: Optional[str] = Form(None),
     db: Session = Depends(get_db)
@@ -26,7 +25,6 @@ async def estimate_depth_image(
         raise HTTPException(status_code=400, detail="Vui lòng cung cấp file hoặc URL")
 
     original_bytes, filename, content_type = await get_image_bytes(file, url)
-
     uploaded_files = []
 
     try:
@@ -36,21 +34,22 @@ async def estimate_depth_image(
             content_type=content_type,
             db=db,
             target_bucket=S3_bucket_name_original,
-            uploaded_files=uploaded_files
+            uploaded_files=uploaded_files,
+            status="processing"
         )
         db.commit()
         db.refresh(db_original)
 
-        background_tasks.add_task(
-            background_process_image,
-            original_bytes,
-            filename,
-            db_original.id
+        # Dispatch to Celery queue
+        task = celery_app.send_task(
+            "tasks.celery_tasks.process_image_task",
+            args=[db_original.id, db_original.stored_filename, filename],
         )
 
         return {
             "status": "processing",
-            "message": "Ảnh đã được tiếp nhận và đang được AI xử lý ngầm.",
+            "message": "Ảnh đã được tiếp nhận và đang được AI xử lý.",
+            "task_id": str(task.id),
             "original_image": db_original
         }
 
@@ -66,7 +65,6 @@ async def estimate_depth_image(
 
 @router.post("/video")
 async def estimate_depth_video(
-    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(None),
     url: Optional[str] = Form(None),
     db: Session = Depends(get_db)
@@ -88,21 +86,22 @@ async def estimate_depth_video(
             content_type=content_type,
             db=db,
             target_bucket=S3_bucket_name_original,
-            uploaded_files=uploaded_files
+            uploaded_files=uploaded_files,
+            status="processing"
         )
         db.commit()
         db.refresh(db_original)
 
-        background_tasks.add_task(
-            background_process_video,
-            temp_path,
-            filename,
-            db_original.id
+        # Dispatch to Celery queue
+        task = celery_app.send_task(
+            "tasks.celery_tasks.process_video_task",
+            args=[db_original.id, db_original.stored_filename, filename],
         )
 
         return {
             "status": "processing",
-            "message": "Video đã được tiếp nhận và đang được AI xử lý ngầm.",
+            "message": "Video đã được tiếp nhận và đang được AI xử lý.",
+            "task_id": str(task.id),
             "original_video": db_original
         }
 
@@ -118,7 +117,6 @@ async def estimate_depth_video(
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
 
 
-# check tiến độ liên tục thông qua file_id
 @router.get("/status/{file_id}")
 async def check_task_status(file_id: int, db: Session = Depends(get_db)):
     db_original = db.query(FileModel).filter(FileModel.id == file_id).first()
@@ -130,7 +128,7 @@ async def check_task_status(file_id: int, db: Session = Depends(get_db)):
     if current_status == "processing":
         return {
             "status": "processing",
-            "message": "Task Depth vẫn đang được thực thi ..."
+            "message": "Task Depth vẫn đang được thực thi..."
         }
     elif current_status == "failed":
         return {
@@ -148,6 +146,30 @@ async def check_task_status(file_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/tasks/{task_id}")
+async def check_celery_task_status(task_id: str):
+    """Kiểm tra trạng thái của một Celery task qua result backend."""
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id, app=celery_app)
+
+    response = {
+        "task_id": task_id,
+        "status": result.state,
+    }
+
+    if result.ready():
+        if result.successful():
+            response["message"] = "Task hoàn thành thành công"
+            response["result"] = result.result
+        elif result.failed():
+            response["message"] = "Task thất bại"
+            response["error"] = str(result.info)
+    else:
+        response["message"] = "Task đang được xử lý..."
+
+    return response
+
+
 @router.websocket("/ws/status/{file_id}")
 async def websocket_status_endpoint(websocket: WebSocket, file_id: str, db: Session = Depends(get_db)):
     await manager.connect(websocket, file_id)
@@ -161,12 +183,10 @@ async def websocket_status_endpoint(websocket: WebSocket, file_id: str, db: Sess
 
         current_status = db_original.status.lower()
         if current_status == "completed":
-            await websocket.send_json({"status": "completed", "message": "File đã hoàn thành từ trước"})
-            await websocket.close()
+            await manager.auto_disconnect({"status": "completed", "message": "File đã hoàn thành từ trước"}, file_id)
             return
         elif current_status == "failed":
-            await websocket.send_json({"status": "failed", "message": "File đã bị lỗi từ trước"})
-            await websocket.close()
+            await manager.auto_disconnect({"status": "failed", "message": "File đã bị lỗi từ trước"}, file_id)
             return
         else:
             await websocket.send_json({"status": "processing", "message": "Đã kết nối thành công, đang chờ model xử lí..."})
