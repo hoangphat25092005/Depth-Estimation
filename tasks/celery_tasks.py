@@ -3,53 +3,22 @@ import io
 import uuid
 import logging
 import tempfile
+import subprocess
 
-import boto3
-from botocore.config import Config as BotoConfig
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
-from configs.setting import (
-    DATABASE_URL,
-    STORAGE_DOMAIN,
-    STORAGE_ACCESS_KEY,
-    STORAGE_SECRET_KEY,
-)
-from configs.minio_store import S3_bucket_name_original, S3_bucket_name_depth
+from models.file import FileModel
+from configs.database import SessionLocal
+from configs.minio_store import s3_client, S3_bucket_name_original, S3_bucket_name_depth
 from services.depth_service import depth_service
 from configs.celery_app import celery_app
+from services.websocket_service import notify_ws_sync
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# MinIO client (boto3) — created per-task to avoid cross-process issues
-# ---------------------------------------------------------------------------
-def _build_s3_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=STORAGE_DOMAIN,
-        aws_access_key_id=STORAGE_ACCESS_KEY,
-        aws_secret_access_key=STORAGE_SECRET_KEY,
-        config=BotoConfig(signature_version="s3v4"),
-        region_name="us-east-1",
-    )
-
-
-# ---------------------------------------------------------------------------
-# Database session factory (new engine scoped to this process)
-# ---------------------------------------------------------------------------
-def _build_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=5)
-    return sessionmaker(bind=engine)()
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-def _upload_bytes_to_minio(s3_client, file_bytes: bytes, bucket: str, key: str, content_type: str):
+def _upload_bytes_to_minio(file_bytes: bytes, bucket: str, key: str, content_type: str):
     s3_client.put_object(
         Bucket=bucket,
         Key=key,
@@ -82,10 +51,8 @@ def _update_file_status(db: Session, file_id: int, status: str, depth_file_id: i
     name="tasks.celery_tasks.process_image_task",
 )
 def process_image_task(self, original_file_id: int, stored_filename: str, original_filename: str):
-    from services.websocket_service import notify_ws_sync
 
-    s3_client = _build_s3_client()
-    db = _build_session()
+    db = SessionLocal()
     uploaded_files: list[tuple[str, str]] = []
 
     try:
@@ -112,7 +79,6 @@ def process_image_task(self, original_file_id: int, stored_filename: str, origin
         # 3. Upload result to depth bucket
         depth_key = f"{uuid.uuid4()}.jpg"
         _upload_bytes_to_minio(
-            s3_client,
             depth_bytes,
             S3_bucket_name_depth,
             depth_key,
@@ -121,7 +87,6 @@ def process_image_task(self, original_file_id: int, stored_filename: str, origin
         uploaded_files.append((S3_bucket_name_depth, depth_key))
 
         # 4. Save depth file record
-        from models.file import FileModel
         depth_record = FileModel(
             original_filename=depth_filename,
             stored_filename=depth_key,
@@ -172,11 +137,9 @@ def process_image_task(self, original_file_id: int, stored_filename: str, origin
     name="tasks.celery_tasks.process_video_task",
 )
 def process_video_task(self, original_file_id: int, stored_filename: str, original_filename: str):
-    from services.websocket_service import notify_ws_sync
-    import subprocess
 
-    s3_client = _build_s3_client()
-    db = _build_session()
+    db = SessionLocal()
+    s3_client = s3_client
     uploaded_files: list[tuple[str, str]] = []
 
     # Use /tmp inside the container for temp files
@@ -246,7 +209,6 @@ def process_video_task(self, original_file_id: int, stored_filename: str, origin
         depth_filename = f"depth_{original_filename}"
 
         # 5. Save depth file record
-        from models.file import FileModel
         depth_record = FileModel(
             original_filename=depth_filename,
             stored_filename=depth_key,
@@ -303,7 +265,6 @@ def _on_failure(
     s3_client,
     uploaded_files: list[tuple[str, str]],
 ):
-    from services.websocket_service import notify_ws_sync
 
     try:
         _update_file_status(db, file_id, "failed")

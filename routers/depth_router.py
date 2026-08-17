@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, Form, File, WebSocket
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, Form, File, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from typing import Optional
 
